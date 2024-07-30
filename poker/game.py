@@ -3,9 +3,7 @@ from random import shuffle
 class Game():
 
     VALID_ACTIONS = ['BET', 'FOLD']
-
-    # How many community cards drawn each round
-    ROUNDS = [3, 1, 1]
+    CARDS_REVEALED = [3, 4, 5]
 
     def __init__(self, number_of_players):
         self.players = [ Player() for Player.id_counter in range(number_of_players)]
@@ -14,15 +12,19 @@ class Game():
         for player in self.players:
             player.chips = 500
 
-        self.big_blind = 3
+        self.big_blind = 2
         self.small_blind = 1
 
         self.button_player = 0
+
+        self.round_going = False
+        self.awaiting_action = False
 
 
     def reset_cards(self):
         # Generating standard deck
         self.deck = []
+        self.community = []
         for i in range(52):
             self.deck.append(Card(i % 4, i // 4))
         shuffle(self.deck)
@@ -32,35 +34,63 @@ class Game():
 
     # Starts a game of poker
     def begin_round(self):
+        if self.round_going: return
+        self.round_going = True
+
         self.reset_cards()
         
         # ID of the current players turn
-        self.current_player_turn =  self.button_player + 2 % len(self.players)
-
-        self.previous_bet = self.big_blind
-
-        # Subtracting big and small blind
-        self.pot = self.big_blind + self.small_blind
-        self.players[max(self.button_player - 1, 0)].chips -= self.small_blind
-        self.players[min((self.button_player + 1), len(self.players) - 1)].chips -= self.big_blind
+        self.current_player_turn =  self.players[(self.button_player + 2) % len(self.players)].id
 
         # Setting up initial cards
-        self.community = []
         for i in range(5): self.community.append(self.deck.pop())
         for player in self.players:
             for i in range(2): player.hand.append(self.deck.pop())
+            player.chips_in = 0
+            player.is_out = False
+
+            
+        # Subtracting big and small blind
+        self.pot = self.big_blind + self.small_blind
+        self.players[max(self.button_player - 1, 0)].chips -= self.small_blind
+        self.players[max(self.button_player - 1, 0)].chips_in = self.small_blind
+        self.players[min((self.button_player + 1), len(self.players) - 1)].chips -= self.big_blind
+        self.players[min((self.button_player + 1), len(self.players) - 1)].chips_in = self.big_blind
         
-        #self.players_in = self.players.copy()
         self.cards_revealed = 0
+        self.action_counter = 0
+        self.awaiting_action = True
+
+        self.round_count = 0
 
     # Return info for players to use
-    def info(self):
+    def info(self, player_id=0):
         return { 'community': [str(self.community[i]) for i in range(self.cards_revealed)],
-                 'hand': [str(c) for c in self.get_current_player().hand] }
+                 'hand': [str(c) for c in self.get_current_player().hand],
+                 'chips': self.get_current_player().chips,
+                 'pot': self.pot,
+                 'player_chips': [p.chips for p in self.players],
+                 'player_chips_in': [p.chips_in for p in self.get_players_in()] }
+    
+    # Cycles through players until all have bet the same amount
+    def new_betting_round(self):
+        self.cards_revealed = Game.CARDS_REVEALED[min(self.round_count, 2)]
+
+        # Final betting round end game round
+        if self.round_count >= 3: self.end_round()
+
+        self.current_player_turn =  self.button_player + 2 % len(self.players)
+
+        for in_player in self.get_players_in():
+            in_player.chips_in = 0
+            in_player.had_go = False
+
+        self.round_count += 1
 
     # Returns whether the action was valid or not
     def action(self, action, amount=0):
-        if action not in Game.VALID_ACTIONS: return False
+        if not self.awaiting_action: return { 'valid': False, 'reason': "Game not ready for actions" }
+        if action not in Game.VALID_ACTIONS: return { 'valid': False, 'reason': f"Invalid action: {action}" }
 
         player = self.get_current_player()
 
@@ -70,31 +100,53 @@ class Game():
 
             if len(self.get_players_in()) == 1:
                 self.end_round()
-                return True
+                
         elif action == 'BET':
-            if amount < self.previous_bet:
-                return False
-            elif amount < player.chips:
-                return False
-            elif amount != self.previous_bet and amount < self.previous_bet * 2:
-                return False
+            if amount+self.get_current_player().chips_in < self.get_current_player(-1).chips_in:
+                return { 'valid': False, 'reason': f"Bet not high enough, previous is {self.get_current_player(-1).chips_in}" }
+            elif amount > player.chips:
+                return { 'valid': False, 'reason': f"Player does not have enough chips to make a bet of {amount}" }
+            elif amount+self.get_current_player().chips_in != self.get_current_player(-1).chips_in and amount+self.get_current_player().chips_in < self.get_current_player(-1).chips_in * 2:
+                return { 'valid': False, 'reason': f"Player must bet at least 2x the previous bet of {self.get_current_player(-1).chips_in} to raise" }
             
-            self.previous_bet = amount
             self.pot += amount
             player.chips -= amount
+            player.chips_in += amount
+
+            # Checking if betting should be over (all players same amount in or folded)
+            betting_round_over = True
+            for p in self.players:
+                if p == player: pass
+                if (p.chips_in < player.chips_in and not p.is_out) or not p.had_go:
+                    betting_round_over = False
+                    break
+
+            if betting_round_over: self.new_betting_round()
         
-        self.current_player_turn += 1
+        self.get_current_player().had_go = True
+        self.current_player_turn = ((self.current_player_turn + 1) % len(self.players))
+        return { 'valid': True, 'reason': "" }
 
-    def get_current_player(self):
-        if self.current_player_turn >= len(self.players): self.current_player_turn %= len(self.players)
-        current_player = self.players[self.current_player_turn]
+    def get_current_player(self, offset=0):
+        # Get index in players of current players turn
 
-        while current_player.is_out:
-            if self.current_player_turn >= len(self.players): self.current_player_turn %= len(self.players)
-            current_player = self.players[self.current_player_turn]
-            self.current_player_turn += 1
+        while self.get_player_from_id(self.current_player_turn).is_out:
+            self.current_player_turn = ((self.current_player_turn + 1) % len(self.players))
 
-        return current_player
+        if offset < 0:
+            player = self.players[self.players.index(self.get_player_from_id(self.current_player_turn)) + offset]
+            while player.is_out:
+                offset -= 1
+                player = self.players[self.players.index(self.get_player_from_id(self.current_player_turn)) + offset]
+            return player
+        elif offset > 0:
+            player = self.players[self.players.index(self.get_player_from_id(self.current_player_turn)) + offset]
+            while player.is_out:
+                offset += 1
+                player = self.players[self.players.index(self.get_player_from_id(self.current_player_turn)) + offset]
+            return player
+        
+        return self.get_player_from_id(self.current_player_turn)
     
     def get_players_in(self):
         p_in = []
@@ -105,6 +157,8 @@ class Game():
 
     # Finalise round if everyone folds or if it goes to heads up
     def end_round(self):
+        self.awaiting_action = False
+
         if len(self.get_players_in()) == 0:
             pass
         elif len(self.get_players_in()) == 1:
@@ -117,6 +171,11 @@ class Game():
         if self.button_player >= len(self.players):
             self.button_player = 0
 
+    def get_player_from_id(self, id):
+        for p in self.players:
+            if p.id == id: return p
+        return None
+
 class Player():
 
     id_counter = 0
@@ -126,8 +185,11 @@ class Player():
 
         self.hand = []
         self.chips = 0
+        self.chips_in = 0
 
         self.is_out = False
+        # All players must get a go before a betting round ends
+        self.had_go = False
 
 
 class Card():
