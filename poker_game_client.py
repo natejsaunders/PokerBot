@@ -1,15 +1,44 @@
 import socket
-import asyncio
+import sys
+import ast
 
-client_id = 0
+CLIENT_NAME = input("Enter Name: ")
 
-async def establish_connection(server_ip='127.0.0.1', server_port=8888):
-    reader, writer = await asyncio.open_connection(server_ip, server_port)
+HOST = '127.0.0.1'
+PORT = 8888
+try:
+    HOST = sys.argv[1]
+    PORT = int(sys.argv[2])
+except IndexError:
+    print(f"No IP or Port set in argv defaulting to: {HOST}:{PORT}")
 
-    writer.write('ESTABLISH CONNECTION'.encode())
-    await writer.drain()
+client_socket = socket.socket()
+print('Waiting for connection')
+try:
+    client_socket.connect((HOST, PORT))
+except socket.error as e:
+    print(str(e))
 
-    data = await reader.read(100)
-    client_id = data.decode()
+# Receiving intial information
+connection_response = client_socket.recv(2048)
+initial_info = ast.literal_eval(connection_response.decode('utf-8'))
+print(initial_info)
 
+resp_initial_info = {
+    'client_name': CLIENT_NAME
+}
+# Sending intial information
+client_socket.send(str.encode(str(resp_initial_info)))
+
+while True:
+    message = input('Your message: ')
+    client_socket.send(str.encode(message))
+    reply = client_socket.recv(2048)
+    decoded_reply = reply.decode('utf-8')
     
+    if message == 'BYE':
+      break
+
+    game_info = ast.literal_eval(decoded_reply)
+    print(game_info)
+

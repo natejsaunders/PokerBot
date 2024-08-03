@@ -72,10 +72,12 @@ class Game():
     # Return info for players to use
     def info(self, player_id=0):
         if self.awaiting_action:
+            player = self.get_player_from_id(player_id)
+
             return { 'community': [str(self.community[i]) for i in range(self.cards_revealed)],
-                    'hand': [str(c) for c in self.get_current_player().hand],
-                    'chips': self.get_current_player().chips,
-                    'chips_in': self.get_current_player().chips_in,
+                    'hand': [str(c) for c in player.hand],
+                    'chips': player.chips,
+                    'chips_in': player.chips_in,
                     'pot': self.pot,
                     'player_chips': [p.chips for p in self.players],
                     'player_chips_in': [p.chips_in for p in self.players_in] }
@@ -207,7 +209,7 @@ class Game():
     def get_player_from_id(self, id):
         for p in self.players:
             if p.id == id: return p
-        return None
+        return self.get_current_player()
 
     # Turns a score (which is basically unreadable) into nice english
     def score_to_english(self, score):
@@ -224,7 +226,7 @@ class Game():
 
 class Player():
 
-    id_counter = 0
+    id_counter = 1
 
     def __init__(self):
         self.id = Player.id_counter
