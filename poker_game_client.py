@@ -1,6 +1,20 @@
 import socket
 import sys
-import ast
+import json
+
+def print_game_info(game_info):
+    try:
+        print("Community cards:")
+        for c in game_info['community']:
+            print(f' {c}', end='') 
+        print("\nYour hand:")
+        for c in game_info['hand']:
+            print(f' {c}', end='') 
+        print(f"\nCurrent chip count: {game_info['chips']} Money in: {game_info['chips_in']} Pot: {game_info['pot']}\n")
+    except KeyError as e:
+        print(str(e))
+        print("Error formatting game data: ")
+        print(game_info)
 
 CLIENT_NAME = input("Enter Name: ")
 
@@ -21,24 +35,39 @@ except socket.error as e:
 
 # Receiving intial information
 connection_response = client_socket.recv(2048)
-initial_info = ast.literal_eval(connection_response.decode('utf-8'))
+initial_info = json.loads(connection_response.decode('utf-8'))
 print(initial_info)
 
 resp_initial_info = {
     'client_name': CLIENT_NAME
 }
 # Sending intial information
-client_socket.send(str.encode(str(resp_initial_info)))
+client_socket.send(json.dumps(resp_initial_info).encode('utf-8'))
 
 while True:
-    message = input('Your message: ')
-    client_socket.send(str.encode(message))
+    go = {
+        'action': 'FOLD',
+        'amount': 0
+    }
+
+    message = input('Bet or fold:').lower()
+
+    if message.startswith('b'):
+        go['action'] = 'BET'
+        try:
+            amount = int(input('Amount: '))
+        except ValueError:
+            amount = 0
+        
+        go['amount'] = amount
+
+    client_socket.send(json.dumps(go).encode('utf-8'))
     reply = client_socket.recv(2048)
     decoded_reply = reply.decode('utf-8')
     
-    if message == 'BYE':
+    if message == 'bye':
       break
 
-    game_info = ast.literal_eval(decoded_reply)
-    print(game_info)
+    game_info = json.loads(decoded_reply)
+    print_game_info(game_info)
 

@@ -1,7 +1,7 @@
 import socket
 from _thread import *
 import sys
-import ast
+import json
 
 from poker import Game
 
@@ -25,11 +25,11 @@ class Server:
             'client_id': this_client_id
         }
         # Sending intial information
-        connection.send(str.encode(str(out_initial_info)))
+        connection.sendall(json.dumps(out_initial_info).encode('utf-8'))
 
         # Receiving intial information
         connection_response = connection.recv(2048)
-        initial_info = ast.literal_eval(connection_response.decode('utf-8'))
+        initial_info = json.loads(connection_response.decode('utf-8'))
         print(f"Connection {this_client_id} established with client: {initial_info['client_name']}")
 
         while True:
@@ -42,14 +42,11 @@ class Server:
                     connection.sendall(str.encode(reply))
                     self.client_count -= 1
                     break
-                elif message == 'game.info':
+                elif message == 'init.info':
+                    reply = initial_info
+                else:
                     reply = self.game.info(this_client_id)
-                    connection.sendall(str.encode(str(reply)))
-                # elif message == 'init.info':
-                #     reply = self.game.info(initial_info)
-                #     connection.sendall(str.encode(str(reply)))
-                reply = out_initial_info
-                connection.sendall(str.encode(str(reply)))
+                connection.sendall(json.dumps(reply).encode('utf-8'))
             # Excepting all errors i know im a bad boy
             except:
                 print(f"Error with connection {this_client_id}, closing...")
