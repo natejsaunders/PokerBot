@@ -6,11 +6,9 @@ class Game():
     CARDS_REVEALED = [3, 4, 5]
 
     def __init__(self, number_of_players):
-        self.players = [ Player() for Player.id_counter in range(number_of_players)]
-    
-        # Setting starting chips
-        for player in self.players:
-            player.chips = 500
+        self.players = [ ]
+
+        self.max_players = number_of_players
 
         self.big_blind = 2
         self.small_blind = 1
@@ -20,6 +18,8 @@ class Game():
         self.round_going = False
         self.awaiting_action = False
 
+    def add_player(self, id):
+        self.players.append(Player(id, 500))
 
     def reset_cards(self):
         # Generating standard deck
@@ -35,12 +35,12 @@ class Game():
     # Starts a game of poker
     def begin_round(self):
         if self.round_going: return
+        # Don't start a round with less than 2 players
+        if len(self.players) < 2: return
         self.round_going = True
 
         self.reset_cards()
         
-        # ID of the current players turn
-        self.current_player_turn =  self.players[(self.button_player + 2) % len(self.players)].id
 
         # Setting up initial cards
         for i in range(5): self.community.append(self.deck.pop())
@@ -49,13 +49,25 @@ class Game():
             player.chips_in = 0
             player.is_out = False
 
-            
-        # Subtracting big and small blind
-        self.pot = self.big_blind + self.small_blind
-        self.players[max(self.button_player - 1, 0)].chips -= self.small_blind
-        self.players[max(self.button_player - 1, 0)].chips_in = self.small_blind
-        self.players[min((self.button_player + 1), len(self.players) - 1)].chips -= self.big_blind
-        self.players[min((self.button_player + 1), len(self.players) - 1)].chips_in = self.big_blind
+        # Only use small blind if less than 3 players
+        if len(self.players) < 4:
+            # ID of the current players turn
+            self.current_player_turn =  self.players[(self.button_player + 2) % len(self.players)].id
+
+            # Subtracting big and small blind
+            self.pot = self.small_blind
+            self.players[(self.button_player + 1) % len(self.players)].chips -= self.small_blind
+            self.players[(self.button_player + 1) % len(self.players)].chips_in = self.small_blind
+        else:
+            # ID of the current players turn
+            self.current_player_turn =  self.players[(self.button_player + 3) % len(self.players)].id
+
+            # Subtracting big and small blind
+            self.pot = self.big_blind + self.small_blind
+            self.players[(self.button_player + 1) % len(self.players)].chips -= self.small_blind
+            self.players[(self.button_player + 1) % len(self.players)].chips_in = self.small_blind
+            self.players[(self.button_player + 2) % len(self.players)].chips -= self.big_blind
+            self.players[(self.button_player + 2) % len(self.players)].chips_in = self.big_blind
         
         self.cards_revealed = 0
         self.action_counter = 0
@@ -105,9 +117,10 @@ class Game():
         return True
 
     # Returns whether the action was valid or not
-    def action(self, action, amount=0):
+    def action(self, player_id, action, amount=0):
         if not self.awaiting_action: return { 'valid': False, 'reason': "Game not ready for actions" }
         if action not in Game.VALID_ACTIONS: return { 'valid': False, 'reason': f"Invalid action: {action}" }
+        if self.get_player_from_id(player_id) != self.get_current_player(): return { 'valid': False, 'reason': f"Not player {player_id}'s go" }
 
         player = self.get_current_player()
 
@@ -228,11 +241,11 @@ class Player():
 
     id_counter = 1
 
-    def __init__(self):
-        self.id = Player.id_counter
+    def __init__(self, id, chips):
+        self.id = id
 
         self.hand = []
-        self.chips = 0
+        self.chips = chips
         self.chips_in = 0
 
         # All players must get a go before a betting round ends
@@ -363,6 +376,10 @@ class Player():
         # Only reaches here if the community cards input are invalid
         return [(0,0)]
         
+    def __eq__(self, value: object) -> bool:
+        if type(value) != Player: return False
+        
+        return self.id == value.id
     
     def print_matrix(self, mat):
         for i in range(len(mat)):

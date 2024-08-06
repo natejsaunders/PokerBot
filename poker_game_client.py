@@ -16,7 +16,7 @@ def print_game_info(game_info):
         print("Error formatting game data: ")
         print(game_info)
 
-CLIENT_NAME = input("Enter Name: ")
+CLIENT_NAME = 'Bob'#input("Enter Name: ")
 
 HOST = '127.0.0.1'
 PORT = 8888
@@ -51,8 +51,9 @@ while True:
     }
 
     message = input('Bet or fold:').lower()
-
-    if message.startswith('b'):
+    if message == 'game.info':
+        response = message
+    elif message.startswith('b'):
         go['action'] = 'BET'
         try:
             amount = int(input('Amount: '))
@@ -61,7 +62,11 @@ while True:
         
         go['amount'] = amount
 
-    client_socket.send(json.dumps(go).encode('utf-8'))
+        response = json.dumps(go)
+    else:
+        response = json.dumps(go)
+
+    client_socket.send(response.encode('utf-8'))
     reply = client_socket.recv(2048)
     decoded_reply = reply.decode('utf-8')
     

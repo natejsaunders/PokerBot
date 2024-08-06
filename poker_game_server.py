@@ -5,20 +5,22 @@ import json
 
 from poker import Game
 
-
 class Server:
     def __init__(self, host, port):
-        self.game = Game(5)
+        self.MAX_CLIENTS = 5
+        self.SERVER_NAME = "Nate's Poker Server"
+
+        self.game = Game(self.MAX_CLIENTS)
         self.game.begin_round()
         self.client_count = 0
-
-        self.SERVER_NAME = "Nate's Poker Server"
 
         self.host = host
         self.port = port
 
     def client_handler(self, connection):
         this_client_id = self.client_count
+        self.game.add_player(this_client_id)
+        self.game.begin_round()
 
         out_initial_info = {
             'server_name': self.SERVER_NAME,
@@ -36,6 +38,7 @@ class Server:
             try:
                 data = connection.recv(2048)
                 message = data.decode('utf-8')
+                print(message)
                 if message == 'BYE':
                     print(f"BYE message received on connection {this_client_id}, closing...")
                     reply = 'BYE'
@@ -44,12 +47,16 @@ class Server:
                     break
                 elif message == 'init.info':
                     reply = initial_info
-                else:
+                elif message == 'game.info':
                     reply = self.game.info(this_client_id)
+                else:
+                    go_data = json.loads(message)
+                    reply = self.game.action(this_client_id, go_data['action'], go_data['amount'])
                 connection.sendall(json.dumps(reply).encode('utf-8'))
             # Excepting all errors i know im a bad boy
-            except:
+            except Exception as e:
                 print(f"Error with connection {this_client_id}, closing...")
+                print(str(e))
                 reply = 'BYE'
                 connection.sendall(str.encode(str(reply)))
                 self.client_count -= 1
@@ -57,6 +64,10 @@ class Server:
         connection.close()
 
     def accept_connections(self, server_socket):
+        if self.client_count >= self.MAX_CLIENTS: 
+            print("Refusing new client connection")
+            return
+
         client, address = server_socket.accept()
         print(f'Connected to: {address[0]}:{str(address[1])}')
         self.client_count += 1
