@@ -4,10 +4,11 @@ import poker
 
 game = poker.Game(5)
 
-game.begin_round()
+for i in range(5): game.add_player(i)
 
-for p in game.players: print([str(c) for c in p.hand])
-print([str(c) for c in game.community])
+go_id = 3
+
+game.begin_round()
 
 # while True:
 #     do = ''
@@ -27,15 +28,19 @@ print([str(c) for c in game.community])
 
 
 action_result = {'valid': True, 'reason': ""}
-while action_result['valid'] and action_result['reason'] != "End of round":
+while action_result['reason'] != "End of round":
+    go_id %= 5
+
     do = 'BET'
     gi = game.info()
-    #print(gi)
+    print(gi)
     action_result = {'valid': False}
     bet = max(gi['player_chips_in']) - gi['chips_in']
-    action_result = game.action(do, bet)
+    action_result = game.action(go_id, do, bet)
 
-    #print(action_result['reason'])
+    print(action_result['reason'])
+
+    go_id += 1
 
 end_gi = game.info()
 print(end_gi)
